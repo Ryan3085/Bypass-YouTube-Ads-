@@ -1,0 +1,65 @@
+// ==UserScript==
+// @name         YouTube: Yout-ube (New Tab) + Local Pause & Mute
+// @namespace    http://tampermonkey.net/
+// @version      3.2
+// @description  Opens yout-ube in a new tab. On the current tab: navigates to the video but aggressively mutes and pauses it for comment reading.
+// @author       You
+// @match        https://www.youtube.com/*
+// @grant        none
+// @run-at       document-start
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // FIX: Stop the script if it runs inside an iframe (like the video player on yout-ube.com)
+    // This prevents the "New Tab" video from being paused.
+    if (window.self !== window.top) return;
+
+    // --- PART 1: CLICK INTERCEPTION ---
+    document.addEventListener('click', function(e) {
+        var target = e.target.closest('a');
+
+        if (target && target.href.includes('/watch?v=') && e.button === 0) {
+            var newUrl = target.href.replace('youtube.com', 'yout-ube.com');
+            window.open(newUrl, '_blank');
+            
+            // Set the flag to pause the video on THIS tab
+            sessionStorage.setItem('tm_force_mode', Date.now());
+        }
+    }, true);
+
+    // --- PART 2: AGGRESSIVE PAUSE (Event Listener) ---
+    // Using 'play' event capture is more reliable for background tabs than setInterval
+    document.addEventListener('play', function(e) {
+        var clickTime = sessionStorage.getItem('tm_force_mode');
+        
+        // If "Force Mode" is active (clicked less than 10s ago) and a video tries to play
+        if (clickTime && (Date.now() - parseInt(clickTime) < 10000)) {
+            if (e.target.tagName === 'VIDEO') {
+                e.preventDefault();
+                e.target.pause();
+                e.target.muted = true;
+                e.target.volume = 0;
+                console.log('Tampermonkey: Background video force-paused via EventListener.');
+            }
+        }
+    }, true); // 'true' is critical to capture the event before the player handles it
+
+    // --- PART 3: CLEANUP ---
+    // Removes the force-pause mode after 10 seconds so you can play manually later
+    setInterval(function() {
+        var clickTime = sessionStorage.getItem('tm_force_mode');
+        if (clickTime && (Date.now() - parseInt(clickTime) > 10000)) {
+             sessionStorage.removeItem('tm_force_mode');
+        }
+    }, 2000);
+
+    // --- PART 4: SPA NAVIGATION HANDLING ---
+    document.addEventListener('yt-navigate-finish', function() {
+        if (sessionStorage.getItem('tm_force_mode')) {
+            sessionStorage.setItem('tm_force_mode', Date.now());
+        }
+    });
+
+})();
